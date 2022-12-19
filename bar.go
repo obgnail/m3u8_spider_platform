@@ -38,18 +38,32 @@ func (bar *Bar) getPercent() int {
 	return int((float64(bar.current) / float64(bar.total)) * 100)
 }
 
-func (bar *Bar) getTime() (s string) {
-	u := time.Now().Sub(bar.start).Seconds()
-	h := int(u) / 3600
-	m := int(u) % 3600 / 60
+func calcTime(second float64) (s string) {
+	h := int(second) / 3600
+	m := int(second) % 3600 / 60
 	if h > 0 {
 		s += strconv.Itoa(h) + "h "
 	}
 	if h > 0 || m > 0 {
 		s += strconv.Itoa(m) + "m "
 	}
-	s += strconv.Itoa(int(u)%60) + "s"
+	s += strconv.Itoa(int(second)%60) + "s"
 	return
+}
+
+func (bar *Bar) getSpentTime() (s string) {
+	u := time.Now().Sub(bar.start).Seconds()
+	return calcTime(u)
+}
+
+func (bar *Bar) getRemainTime() (s string) {
+	if bar.current == 0 {
+		return "INF"
+	}
+	spent := time.Now().Sub(bar.start).Seconds()
+	remain := bar.total - bar.current
+	u := spent * float64(remain) / float64(bar.current)
+	return calcTime(u)
 }
 
 func NewBarWithGraph(start, total int, graph string) *Bar {
@@ -75,8 +89,8 @@ func (bar *Bar) load() {
 	if bar.percent != last && bar.percent%2 == 0 {
 		bar.rate += bar.graph
 	}
-	fmt.Printf("\r[%-50s]% 3d%%    %2s   %d/%d",
-		bar.rate, bar.percent, bar.getTime(), bar.current, bar.total)
+	fmt.Printf("\r[%-50s]% 3d%%    %2s   %d/%d    +%2s        \r",
+		bar.rate, bar.percent, bar.getSpentTime(), bar.current, bar.total, bar.getRemainTime())
 
 	if bar.current == bar.total {
 		fmt.Println()

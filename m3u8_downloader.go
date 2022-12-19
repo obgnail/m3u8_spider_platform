@@ -255,7 +255,7 @@ func (d *M3u8Downloader) retry(f func() (stop bool, err error)) error {
 }
 
 func (d *M3u8Downloader) prepare() error {
-	Logger.Debugf("[STEP0] check url and mkdir")
+	Logger.Debugf("[STEP0] check url")
 
 	if !d.check(d.url) {
 		return fmt.Errorf("error url: %s", d.url)
@@ -267,7 +267,7 @@ func (d *M3u8Downloader) prepare() error {
 }
 
 func (d *M3u8Downloader) parse() (shards map[int]string, err error) {
-	Logger.Debugf("[STEP1] parse m3u8 url: %s", d.url)
+	Logger.Debugf("[STEP1] parse m3u8 file: %s", d.url)
 
 	shards, err = d.parseM3u8Url(d.url, d.isShardFunc)
 	if err != nil {
@@ -289,6 +289,7 @@ func (d *M3u8Downloader) download(shards map[int]string) error {
 		}
 		d.bar = NewBar(d.totalShard-len(shards), d.totalShard)
 		d.bar.Start()
+
 		d.downloadShards(d.url, shards, d.downPath)
 
 		_done, err := d.done()

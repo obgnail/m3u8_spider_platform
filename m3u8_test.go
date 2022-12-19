@@ -9,7 +9,7 @@ import (
 )
 
 
-func testM3u8_1(t *testing.T) {
+func TestM3u8_1(t *testing.T) {
 	// nunuyy5.org
 	url := "https://b.baobuzz.com/m3u8/569128.m3u8?sign=4d5618aebd4dd9a59b0533e0603922d9"
 	downloader := Default(url, "")
@@ -19,7 +19,7 @@ func testM3u8_1(t *testing.T) {
 	errHandler(downloader.Run())
 }
 
-func testM3u8_2(t *testing.T) {
+func TestM3u8_2(t *testing.T) {
 	d := map[int]string{
 		78: "https://b.baobuzz.com/m3u8/569204.m3u8?sign=e99a2a49dc13a136fc2dc2a671dc4a28",
 	}
@@ -41,8 +41,9 @@ func testM3u8_2(t *testing.T) {
 	}
 }
 
-func testBar(t *testing.T) {
+func TestBar(t *testing.T) {
 	b := NewBar(0, 1000)
+	b.Start()
 	for i := 0; i < 1000; i++ {
 		b.Add(1)
 		time.Sleep(time.Second)
