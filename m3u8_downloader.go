@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -20,26 +21,24 @@ const (
 
 type M3u8Downloader struct {
 	url         string
-	saveName    string
 	downPath    string
 	savePath    string
+	saveName    string
 	clearDebris bool
-	threads     int
-	maxRetry    int
-	isShardFunc func(idx int, line string) (need bool)
-
-	totalShard int
-	encrypt    bool
-	bar        *Bar
+	threads     uint
+	maxRetry    uint
+	isShardFunc func(line string) (need bool)
+	_totalShard int
+	_encrypt    bool
+	_bar        *ProcessBar
 }
 
 func Default(url, saveName string) *M3u8Downloader {
 	return New(url, saveName, "", "", true, 16, 5, nil)
 }
 
-func New(url, saveName, downPath, savePath string, clearDebris bool, threads, maxRetry int,
-	isShardFunc func(idx int, line string) (need bool)) *M3u8Downloader {
-
+func New(url, saveName, downPath, savePath string, clearDebris bool, threads, maxRetry uint,
+	isShardFunc func(line string) (need bool)) *M3u8Downloader {
 	if len(saveName) == 0 {
 		u, err := Url.Parse(url)
 		if err != nil {
@@ -65,18 +64,15 @@ func New(url, saveName, downPath, savePath string, clearDebris bool, threads, ma
 		clearDebris: clearDebris,
 		threads:     threads,
 		maxRetry:    maxRetry,
-		encrypt:     false,
+		_encrypt:    false,
 	}
-
 	d.SetIsShardFunc(isShardFunc)
 	return d
 }
 
-func (d *M3u8Downloader) SetIsShardFunc(isShardFunc func(idx int, line string) (need bool)) {
+func (d *M3u8Downloader) SetIsShardFunc(isShardFunc func(line string) (need bool)) {
 	if isShardFunc == nil {
-		isShardFunc = func(idx int, line string) (need bool) {
-			return strings.HasPrefix(line, "http")
-		}
+		isShardFunc = func(line string) (need bool) { return strings.HasPrefix(line, "http") }
 	}
 	d.isShardFunc = isShardFunc
 }
@@ -98,8 +94,7 @@ func (d *M3u8Downloader) filter(shards map[int]string) (map[int]string, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-
-	for idx := 0; idx < d.totalShard; idx++ {
+	for idx := 0; idx < d._totalShard; idx++ {
 		fileName := fmt.Sprintf(shardFileFormat, idx)
 		if _, ok := fileMap[fileName]; ok {
 			delete(shards, idx)
@@ -113,8 +108,7 @@ func (d *M3u8Downloader) done() (bool, error) {
 	if err != nil {
 		return false, errors.Trace(err)
 	}
-
-	for idx := 0; idx < d.totalShard; idx++ {
+	for idx := 0; idx < d._totalShard; idx++ {
 		fileName := fmt.Sprintf(shardFileFormat, idx)
 		if _, ok := fileMap[fileName]; !ok {
 			return false, nil
@@ -146,8 +140,8 @@ func (d *M3u8Downloader) request(url string) (body []byte, err error) {
 	return
 }
 
-func (d *M3u8Downloader) parseM3u8Url(url string,
-	isShardFunc func(idx int, line string) (need bool)) (shards map[int]string, err error) {
+func (d *M3u8Downloader) parseM3u8Url(url string, isShardFunc func(line string) (need bool)) (
+	shards map[int]string, err error) {
 	if isShardFunc == nil {
 		panic("isShardFunc == nil")
 	}
@@ -157,21 +151,21 @@ func (d *M3u8Downloader) parseM3u8Url(url string,
 	}
 	response := strings.Split(string(resp), "\n")
 
-	shards = make(map[int]string)
 	var shardIdx = 0
+	shards = make(map[int]string)
 	for _, line := range response {
-		if need := isShardFunc(shardIdx, line) == true; need {
+		if isShardFunc(line) == true {
 			shards[shardIdx] = line
 			shardIdx++
 		}
 		if strings.HasPrefix(line, "#EXT-X-KEY:") {
-			d.encrypt = true
+			d._encrypt = true
 		}
 	}
 	if len(shards) == 0 {
 		return nil, fmt.Errorf("len(shards) == 0")
 	}
-	d.totalShard = len(shards)
+	d._totalShard = len(shards)
 	return
 }
 
@@ -206,8 +200,8 @@ func writeFile(Path string, content []byte) (err error) {
 	return
 }
 
-func (d *M3u8Downloader) downloadShard(group *WaitGroup, m3u8Url string, shardIdx int, shardUrl, downPath string) error {
-	defer group.Done()
+func (d *M3u8Downloader) downloadShard(wg *WaitGroup, m3u8Url string, shardIdx int, shardUrl, downPath string) error {
+	defer wg.Done()
 
 	res := strings.Split(m3u8Url, "/")
 	baseUrl := strings.Join(res[:len(res)-1], "/")
@@ -225,13 +219,13 @@ func (d *M3u8Downloader) downloadShard(group *WaitGroup, m3u8Url string, shardId
 		if err = writeFile(debrisName, resp); err != nil {
 			return errors.Trace(err)
 		}
-		d.bar.Add(1)
+		d._bar.Add(1)
 	}
 	return nil
 }
 
 func (d *M3u8Downloader) downloadShards(m3u8Url string, shards map[int]string, downPath string) {
-	wg := NewWaitGroup(d.threads)
+	wg := NewWaitGroup(int(d.threads))
 	for shardIdx, shardUrl := range shards {
 		wg.AddDelta()
 		go errHandler(d.downloadShard(wg, m3u8Url, shardIdx, shardUrl, downPath))
@@ -239,18 +233,18 @@ func (d *M3u8Downloader) downloadShards(m3u8Url string, shards map[int]string, d
 	wg.Wait()
 }
 
-func (d *M3u8Downloader) retry(f func() (stop bool, err error)) error {
-	count := 0
+func (d *M3u8Downloader) retry(maxRetry uint, f func() (stop bool, err error)) error {
+	count := uint(0)
 	for {
 		stop, err := f()
 		if stop || err != nil {
 			return err
 		}
 		count++
-		if count == d.maxRetry {
+		if count == maxRetry+1 {
 			return fmt.Errorf("retry too much")
 		}
-		Logger.Debugf("---retry: %d", count)
+		Logger.Warnf("[%d] Time(s) Retry...", count)
 	}
 }
 
@@ -269,11 +263,20 @@ func (d *M3u8Downloader) prepare() error {
 func (d *M3u8Downloader) parse() (shards map[int]string, err error) {
 	Logger.Debugf("[STEP1] parse m3u8 file: %s", d.url)
 
-	shards, err = d.parseM3u8Url(d.url, d.isShardFunc)
+	interval := 3 * time.Second
+	err = d.retry(d.maxRetry, func() (stop bool, err error) {
+		shards, err = d.parseM3u8Url(d.url, d.isShardFunc)
+		if err == nil {
+			return true, nil
+		}
+		errHandler(err)
+		time.Sleep(interval)
+		return false, nil
+	})
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	if d.encrypt {
+	if d._encrypt {
 		return nil, fmt.Errorf("unsupported encrypt m3u8 file")
 	}
 	return shards, nil
@@ -282,24 +285,20 @@ func (d *M3u8Downloader) parse() (shards map[int]string, err error) {
 func (d *M3u8Downloader) download(shards map[int]string) error {
 	Logger.Debugf("[STEP2] download [%d] shards", len(shards))
 
-	err := d.retry(func() (stop bool, err error) {
+	d._bar = NewBar(0, d._totalShard)
+	d._bar.Start()
+	err := d.retry(d.maxRetry, func() (stop bool, err error) {
 		shards, err = d.filter(shards)
 		if err != nil {
 			return true, errors.Trace(err)
 		}
-		d.bar = NewBar(d.totalShard-len(shards), d.totalShard)
-		d.bar.Start()
-
+		d._bar.Reset(d._totalShard - len(shards))
 		d.downloadShards(d.url, shards, d.downPath)
-
 		_done, err := d.done()
 		if err != nil {
 			return true, errors.Trace(err)
 		}
-		if _done {
-			return true, nil
-		}
-		return false, nil
+		return _done, nil
 	})
 	return errors.Trace(err)
 }
@@ -332,7 +331,9 @@ func (d *M3u8Downloader) merge() error {
 func (d *M3u8Downloader) clear() error {
 	if d.clearDebris {
 		Logger.Debug("[STEP4] clear debris")
-		return os.RemoveAll(d.downPath)
+		if err := os.RemoveAll(d.downPath); err != nil {
+			return errors.Trace(err)
+		}
 	}
 	return nil
 }

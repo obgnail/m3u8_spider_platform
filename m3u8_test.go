@@ -3,19 +3,14 @@ package main
 import (
 	"fmt"
 	"github.com/juju/errors"
-	"strings"
 	"testing"
 	"time"
 )
-
 
 func TestM3u8_1(t *testing.T) {
 	// nunuyy5.org
 	url := "https://b.baobuzz.com/m3u8/569128.m3u8?sign=4d5618aebd4dd9a59b0533e0603922d9"
 	downloader := Default(url, "")
-	downloader.SetIsShardFunc(func(idx int, line string) (skip bool) {
-		return strings.Index(line, ".jpg") != -1
-	})
 	errHandler(downloader.Run())
 }
 
@@ -31,9 +26,6 @@ func TestM3u8_2(t *testing.T) {
 			down := "d:\\tmp\\tmp\\download\\"
 			downloader := New(m3u8, ep, down, "e:\\三国演义", true,
 				10, 5, nil)
-			downloader.SetIsShardFunc(func(idx int, line string) (skip bool) {
-				return strings.Index(line, ".jpg") != -1
-			})
 			if err := downloader.Run(); err != nil {
 				Logger.Error(errors.ErrorStack(err))
 			}
