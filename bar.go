@@ -9,12 +9,12 @@ import (
 )
 
 type ProcessBar struct {
-	mu        sync.Mutex
-	graph     string    // 显示符号
-	start     int       // 开始的进度位置
-	current   int       // 当前的进度位置
-	total     int       // 总进度
-	startTime time.Time // 开始时间
+	mu        sync.Mutex // protect current and load()
+	graph     string     // 显示符号
+	start     int        // 开始的进度位置
+	current   int        // 当前的进度位置
+	total     int        // 总进度
+	startTime time.Time  // 开始时间
 	_once     sync.Once
 }
 
@@ -25,11 +25,7 @@ func NewBarWithGraph(start, total int, graph string) *ProcessBar {
 }
 
 func NewBar(current, total int) *ProcessBar {
-	bar := new(ProcessBar)
-	bar.total = total
-	if bar.graph == "" {
-		bar.graph = "█"
-	}
+	bar := &ProcessBar{graph: "█", total: total}
 	bar.reset(current)
 	return bar
 }
@@ -37,6 +33,9 @@ func NewBar(current, total int) *ProcessBar {
 func (bar *ProcessBar) Add(i int) {
 	bar.withLock(func() {
 		bar.current += i
+		if bar.current > bar.total {
+			bar.current = bar.total
+		}
 		bar.load()
 	})
 }
@@ -51,7 +50,7 @@ func (bar *ProcessBar) Reset(current int) {
 func (bar *ProcessBar) Start() {
 	bar._once.Do(func() {
 		go func() {
-			for bar.current != bar.total {
+			for bar.current < bar.total {
 				bar.withLock(bar.load)
 				time.Sleep(time.Second)
 			}
@@ -66,6 +65,9 @@ func (bar *ProcessBar) withLock(f func()) {
 }
 
 func (bar *ProcessBar) reset(current int) {
+	if current > bar.total {
+		current = bar.total
+	}
 	bar.start = current
 	bar.current = current
 	bar.startTime = time.Now()
