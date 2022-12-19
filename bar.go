@@ -15,6 +15,8 @@ type Bar struct {
 	current int       // 当前进度位置
 	total   int       // 总进度
 	start   time.Time // 开始时间
+
+	once sync.Once
 }
 
 func NewBar(current, total int) *Bar {
@@ -56,6 +58,17 @@ func NewBarWithGraph(start, total int, graph string) *Bar {
 	return bar
 }
 
+func (bar *Bar) Start() {
+	bar.once.Do(func() {
+		go func() {
+			for bar.current != bar.total {
+				bar.load()
+				time.Sleep(time.Second)
+			}
+		}()
+	})
+}
+
 func (bar *Bar) load() {
 	last := bar.percent
 	bar.percent = bar.getPercent()
@@ -64,6 +77,10 @@ func (bar *Bar) load() {
 	}
 	fmt.Printf("\r[%-50s]% 3d%%    %2s   %d/%d",
 		bar.rate, bar.percent, bar.getTime(), bar.current, bar.total)
+
+	if bar.current == bar.total {
+		fmt.Println()
+	}
 }
 
 func (bar *Bar) Reset(current int) {
@@ -71,7 +88,6 @@ func (bar *Bar) Reset(current int) {
 	defer bar.mu.Unlock()
 	bar.current = current
 	bar.load()
-
 }
 
 func (bar *Bar) Add(i int) {

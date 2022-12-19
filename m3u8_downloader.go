@@ -75,7 +75,7 @@ func New(url, saveName, downPath, savePath string, clearDebris bool, threads, ma
 func (d *M3u8Downloader) SetIsShardFunc(isShardFunc func(idx int, line string) (need bool)) {
 	if isShardFunc == nil {
 		isShardFunc = func(idx int, line string) (need bool) {
-			return strings.Index(line, ".ts") != -1
+			return strings.HasPrefix(line, "http")
 		}
 	}
 	d.isShardFunc = isShardFunc
@@ -123,7 +123,7 @@ func (d *M3u8Downloader) done() (bool, error) {
 	return true, nil
 }
 
-func (d *M3u8Downloader) checkUrl(url string) bool {
+func (d *M3u8Downloader) check(url string) bool {
 	return strings.HasPrefix(url, "http")
 }
 
@@ -257,7 +257,7 @@ func (d *M3u8Downloader) retry(f func() (stop bool, err error)) error {
 func (d *M3u8Downloader) prepare() error {
 	Logger.Debugf("[STEP0] check url and mkdir")
 
-	if !d.checkUrl(d.url) {
+	if !d.check(d.url) {
 		return fmt.Errorf("error url: %s", d.url)
 	}
 	if err := d.mkdir(); err != nil {
@@ -276,12 +276,11 @@ func (d *M3u8Downloader) parse() (shards map[int]string, err error) {
 	if d.encrypt {
 		return nil, fmt.Errorf("unsupported encrypt m3u8 file")
 	}
-	Logger.Debugf("this m3u8 file has %d shards", len(shards))
 	return shards, nil
 }
 
 func (d *M3u8Downloader) download(shards map[int]string) error {
-	Logger.Debug("[STEP2] start download shards")
+	Logger.Debugf("[STEP2] download [%d] shards", len(shards))
 
 	err := d.retry(func() (stop bool, err error) {
 		shards, err = d.filter(shards)
@@ -289,6 +288,7 @@ func (d *M3u8Downloader) download(shards map[int]string) error {
 			return true, errors.Trace(err)
 		}
 		d.bar = NewBar(d.totalShard-len(shards), d.totalShard)
+		d.bar.Start()
 		d.downloadShards(d.url, shards, d.downPath)
 
 		_done, err := d.done()
@@ -338,7 +338,7 @@ func (d *M3u8Downloader) clear() error {
 
 // prepare -> parse -> download -> merge -> clear
 func (d *M3u8Downloader) Run() (err error) {
-	Logger.Infof("*** download %s ***\n", d.saveName)
+	Logger.Infof("download: %s\n", d.saveName)
 
 	if err = d.prepare(); err != nil {
 		return errors.Trace(err)
@@ -356,7 +356,7 @@ func (d *M3u8Downloader) Run() (err error) {
 	if err = d.clear(); err != nil {
 		return errors.Trace(err)
 	}
-	Logger.Infof("*** fininsh %s ***\n", d.saveName)
+	Logger.Infof("fininsh: %s\n", d.saveName)
 	return nil
 }
 
@@ -364,4 +364,14 @@ func errHandler(err error) {
 	if err != nil {
 		Logger.Error(errors.ErrorStack(err))
 	}
+}
+
+func main() {
+	//url := "https://bf3.sbdm.cc/runtime/Aliyun/9208ddf4d3ad882f80a9fd59860798fc.m3u8"
+	//downloader := Default(url, "bocchi the rock 11.ts")
+	//errHandler(downloader.Run())
+
+	url := "https://yun.ssdm.cc/SBDM/KidouSenshiGundamSuiseinoMajo09.m3u8"
+	downloader := Default(url, "KidouSenshiGundamSuiseinoMajo09.ts")
+	errHandler(downloader.Run())
 }
