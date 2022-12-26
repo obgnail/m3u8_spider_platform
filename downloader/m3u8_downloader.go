@@ -255,7 +255,7 @@ func (d *M3u8Downloader) downloadShard(wg *WaitGroup, shardIdx int, shardUrl, do
 		if err = writeFile(debrisName, resp); err != nil {
 			return errors.Trace(err)
 		}
-		d._bar.Add(1)
+		d._bar.Add(uint64(len(resp)))
 	}
 	return nil
 }
